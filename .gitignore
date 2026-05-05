@@ -29,3 +29,4 @@ coverage.json
 # Logs
 *.log
 /demo/
+/docs/
