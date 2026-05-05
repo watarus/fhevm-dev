@@ -84,6 +84,24 @@ contract ConfidentialPayroll is ZamaEthereumConfig {
     function removeEmployee(address employee) external onlyOwner {
         if (!isEmployee[employee]) revert NotEmployee();
         isEmployee[employee] = false;
+
+        // Splice the address out of `_employees[]` (swap-and-pop) so that a
+        // subsequent addEmployee re-add does not produce a duplicate entry.
+        uint256 len = _employees.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_employees[i] == employee) {
+                if (i != len - 1) _employees[i] = _employees[len - 1];
+                _employees.pop();
+                break;
+            }
+        }
+
+        // Note: the encrypted `_salaries[employee]` and any pending payouts
+        // tied to this address are intentionally preserved. The former employee
+        // can still complete a `settlePayout` they initiated before removal,
+        // but `requestPayout` will revert (NotEmployee) once removed. The
+        // owner may continue to user-decrypt the residual balance to reconcile
+        // the final settlement off-chain.
         emit EmployeeRemoved(employee);
     }
 
@@ -149,12 +167,12 @@ contract ConfidentialPayroll is ZamaEthereumConfig {
         if (!isEmployee[msg.sender]) revert NotEmployee();
 
         euint64 req = FHE.fromExternal(requested, inputProof);
-        euint64 balance = _salaries[msg.sender];
-        // If no salary has ever been credited, balance handle is uninitialized;
-        // FHE.min would still work after we treat balance as 0 by initializing it.
-        if (!FHE.isInitialized(balance)) {
-            balance = FHE.asEuint64(0);
-        }
+
+        // Treat both per-employee balance and the running aggregate as 0 when
+        // their handles have never been initialized. Symmetric guards prevent
+        // FHE.sub from running on an uninitialized handle in the no-credit path.
+        euint64 balance = FHE.isInitialized(_salaries[msg.sender]) ? _salaries[msg.sender] : FHE.asEuint64(0);
+        euint64 totalBefore = FHE.isInitialized(_totalPayroll) ? _totalPayroll : FHE.asEuint64(0);
 
         euint64 actual = FHE.min(req, balance);
 
@@ -164,7 +182,7 @@ contract ConfidentialPayroll is ZamaEthereumConfig {
         FHE.allow(newBalance, owner);
         FHE.allow(newBalance, msg.sender);
 
-        euint64 newTotal = FHE.sub(_totalPayroll, actual);
+        euint64 newTotal = FHE.sub(totalBefore, actual);
         _totalPayroll = newTotal;
         FHE.allowThis(newTotal);
         FHE.allow(newTotal, owner);

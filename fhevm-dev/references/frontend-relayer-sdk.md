@@ -59,8 +59,10 @@ The `inputProof` is bound to `signer.address`. Submitting the tx from a differen
 const handle = await contract.getSalary(signer.address);
 
 const keypair = instance.generateKeypair();
-const startTimeStamp = Math.floor(Date.now() / 1000).toString();
-const durationDays = "10";
+// `startTimestamp` and `durationDays` MUST be numeric (the SDK enforces
+// `typeof === "number"`). Passing strings throws InvalidTypeError.
+const startTimeStamp = Math.floor(Date.now() / 1000);
+const durationDays = 10;
 
 const eip712 = instance.createEIP712(
   keypair.publicKey,
@@ -79,9 +81,9 @@ const result = await instance.userDecrypt(
   [{ handle, contractAddress }],
   keypair.privateKey,
   keypair.publicKey,
-  signature.replace("0x", ""),
+  signature,
   [contractAddress],
-  signer.address,
+  signer.address,        // userAddress: must match the signer of the EIP-712 above
   startTimeStamp,
   durationDays,
 );

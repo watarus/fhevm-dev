@@ -24,7 +24,7 @@ Encrypted types, ACL discipline, and the overall flow are the same. What changed
 | `TFHE.asEuint*`, `TFHE.asEbool`, `TFHE.asEaddress` | `FHE.asEuint*`, `FHE.asEbool`, `FHE.asEaddress` |
 | `TFHE.toBytes32(handle)` | `FHE.toBytes32(handle)` |
 | `TFHE.isInitialized(handle)` | `FHE.isInitialized(handle)` |
-| `TFHE.cast` | Direct `FHE.asEuint*(otherEuintTypedValue)` |
+| `TFHE.cast(value, type)` | Use the matching `FHE.as<TargetType>(value)` overload — e.g. `FHE.asEuint16(myEuint8Value)`, `FHE.asEuint8(myEbool)`. v0.11 ships a wide set of width and ebool→euint conversions. |
 
 ## 3. Decryption migration (the breaking change)
 

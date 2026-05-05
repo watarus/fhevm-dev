@@ -36,20 +36,12 @@ npm run test
 Expected:
 
 ```
-  FHECounter
-    ✔ encrypted count should be uninitialized after deployment
-    ✔ increment the counter by 1
-    ✔ decrement the counter by 1
+  FHECounter (3 tests passing)
+  ConfidentialPayroll (17 tests passing — credit/payout happy paths,
+    employee-management revert paths, settlePayout authorization
+    reverts, and the sum(balances) == totalPayroll invariant)
 
-  ConfidentialPayroll
-    ✔ only the owner can credit salaries
-    ✔ crediting a non-employee reverts
-    ✔ credits salary so the employee and the owner can decrypt the balance, but a third party cannot
-    ✔ aggregates the encrypted total payroll, decryptable by the owner only
-    ✔ requestPayout clamps the requested amount via FHE.min so balance never underflows
-    ✔ emits PayoutRequested with a publicly-decryptable amount handle
-
-  9 passing
+  20 passing
 ```
 
 ## What `ConfidentialPayroll` demonstrates

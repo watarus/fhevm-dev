@@ -131,8 +131,13 @@ describe("ConfidentialPayroll", function () {
       .map((log) => {
         try {
           return contract.interface.parseLog(log);
-        } catch {
-          return null;
+        } catch (err) {
+          // parseLog throws on logs from contracts other than this one — that
+          // is expected. Anything else is a real ABI mismatch and should bubble.
+          if (err instanceof Error && /no matching event|unknown topic/i.test(err.message)) {
+            return null;
+          }
+          throw err;
         }
       })
       .find((p) => p && p.name === "PayoutRequested");
@@ -149,5 +154,161 @@ describe("ConfidentialPayroll", function () {
     const balanceHandle = await contract.getSalary(signers.alice.address);
     const aliceBalance = await fhevm.userDecryptEuint(FhevmType.euint64, balanceHandle, address, signers.alice);
     expect(aliceBalance).to.eq(2_500n);
+  });
+
+  // ─── Authorization / revert path coverage ─────────────────────────────
+
+  it("addEmployee(0x0) reverts NotEmployee", async function () {
+    await expect(contract.connect(signers.owner).addEmployee(ethers.ZeroAddress)).to.be.revertedWithCustomError(
+      contract,
+      "NotEmployee",
+    );
+  });
+
+  it("addEmployee twice for the same address reverts AlreadyEmployee", async function () {
+    await expect(contract.connect(signers.owner).addEmployee(signers.alice.address)).to.be.revertedWithCustomError(
+      contract,
+      "AlreadyEmployee",
+    );
+  });
+
+  it("removeEmployee of a non-employee reverts NotEmployee", async function () {
+    await expect(contract.connect(signers.owner).removeEmployee(signers.outsider.address)).to.be.revertedWithCustomError(
+      contract,
+      "NotEmployee",
+    );
+  });
+
+  it("only the owner can add or remove employees", async function () {
+    await expect(
+      contract.connect(signers.alice).addEmployee(signers.outsider.address),
+    ).to.be.revertedWithCustomError(contract, "NotOwner");
+    await expect(contract.connect(signers.alice).removeEmployee(signers.bob.address)).to.be.revertedWithCustomError(
+      contract,
+      "NotOwner",
+    );
+  });
+
+  it("requestPayout from a non-employee reverts NotEmployee", async function () {
+    const enc = await encryptedAmount(signers.outsider, 100n);
+    await expect(
+      contract.connect(signers.outsider).requestPayout(enc.handles[0], enc.inputProof),
+    ).to.be.revertedWithCustomError(contract, "NotEmployee");
+  });
+
+  it("requestPayout from a removed employee reverts even if their balance was non-zero", async function () {
+    const credit = await encryptedAmount(signers.owner, 5_000n);
+    await contract.connect(signers.owner).creditSalary(signers.alice.address, credit.handles[0], credit.inputProof);
+    await contract.connect(signers.owner).removeEmployee(signers.alice.address);
+    const req = await encryptedAmount(signers.alice, 1_000n);
+    await expect(contract.connect(signers.alice).requestPayout(req.handles[0], req.inputProof)).to.be.revertedWithCustomError(
+      contract,
+      "NotEmployee",
+    );
+  });
+
+  it("re-adding a removed employee does not create a duplicate _employees[] entry (swap-and-pop fix)", async function () {
+    // Starting state: alice + bob + carol added in beforeEach => count == 3.
+    expect(await contract.employeeCount()).to.eq(3n);
+
+    await contract.connect(signers.owner).removeEmployee(signers.alice.address);
+    expect(await contract.employeeCount()).to.eq(2n);
+
+    await contract.connect(signers.owner).addEmployee(signers.alice.address);
+    expect(await contract.employeeCount()).to.eq(3n);
+
+    // Confirm no duplicate — every address appears at most once.
+    const seen = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      const addr = await contract.employeeAt(i);
+      expect(seen.has(addr.toLowerCase())).to.eq(false);
+      seen.add(addr.toLowerCase());
+    }
+  });
+
+  // ─── Settlement revert paths (cleartext + proof not produced; we only
+  //     exercise the cheap reverts) ──────────────────────────────────────
+
+  it("settlePayout for an unknown payoutId reverts UnknownPayout", async function () {
+    await expect(
+      contract.connect(signers.alice).settlePayout(999, "0x", "0x"),
+    ).to.be.revertedWithCustomError(contract, "UnknownPayout");
+  });
+
+  it("settlePayout from a different employee reverts PayoutSenderMismatch", async function () {
+    const credit = await encryptedAmount(signers.owner, 1_000n);
+    await contract.connect(signers.owner).creditSalary(signers.alice.address, credit.handles[0], credit.inputProof);
+    const req = await encryptedAmount(signers.alice, 500n);
+    await contract.connect(signers.alice).requestPayout(req.handles[0], req.inputProof);
+
+    await expect(
+      contract.connect(signers.bob).settlePayout(0, "0x", "0x"),
+    ).to.be.revertedWithCustomError(contract, "PayoutSenderMismatch");
+  });
+
+  // ─── State invariants ──────────────────────────────────────────────────
+
+  it("preserves sum(balances) == totalPayroll across mixed credit/payout activity", async function () {
+    for (const [emp, amt] of [
+      [signers.alice, 5_000n],
+      [signers.bob, 3_000n],
+      [signers.carol, 7_000n],
+    ] as const) {
+      const enc = await encryptedAmount(signers.owner, amt);
+      await contract.connect(signers.owner).creditSalary(emp.address, enc.handles[0], enc.inputProof);
+    }
+
+    // Alice partial withdrawal.
+    const aliceReq = await encryptedAmount(signers.alice, 2_000n);
+    await contract.connect(signers.alice).requestPayout(aliceReq.handles[0], aliceReq.inputProof);
+
+    // Top-up bob.
+    const bobTop = await encryptedAmount(signers.owner, 1_000n);
+    await contract.connect(signers.owner).creditSalary(signers.bob.address, bobTop.handles[0], bobTop.inputProof);
+
+    const aliceBalance = await fhevm.userDecryptEuint(
+      FhevmType.euint64,
+      await contract.getSalary(signers.alice.address),
+      address,
+      signers.alice,
+    );
+    const bobBalance = await fhevm.userDecryptEuint(
+      FhevmType.euint64,
+      await contract.getSalary(signers.bob.address),
+      address,
+      signers.bob,
+    );
+    const carolBalance = await fhevm.userDecryptEuint(
+      FhevmType.euint64,
+      await contract.getSalary(signers.carol.address),
+      address,
+      signers.carol,
+    );
+    const totalDecoded = await fhevm.userDecryptEuint(
+      FhevmType.euint64,
+      await contract.getTotalPayroll(),
+      address,
+      signers.owner,
+    );
+
+    expect(aliceBalance + bobBalance + carolBalance).to.eq(totalDecoded);
+    expect(totalDecoded).to.eq(5_000n + 3_000n + 7_000n - 2_000n + 1_000n); // 14_000
+  });
+
+  it("requestPayout on a never-credited employee does not revert and clamps to zero (uninitialized handle path)", async function () {
+    // Alice was added in beforeEach but never credited. _totalPayroll is also
+    // uninitialized at this point. The contract must guard both handles.
+    const req = await encryptedAmount(signers.alice, 1_000n);
+    const tx = await contract.connect(signers.alice).requestPayout(req.handles[0], req.inputProof);
+    const receipt = await tx.wait();
+    expect(receipt!.status).to.eq(1);
+
+    const balanceHandle = await contract.getSalary(signers.alice.address);
+    const aliceBalance = await fhevm.userDecryptEuint(FhevmType.euint64, balanceHandle, address, signers.alice);
+    expect(aliceBalance).to.eq(0n);
+
+    const totalHandle = await contract.getTotalPayroll();
+    const total = await fhevm.userDecryptEuint(FhevmType.euint64, totalHandle, address, signers.owner);
+    expect(total).to.eq(0n);
   });
 });

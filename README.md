@@ -55,12 +55,12 @@ The mock-mode tests cover all six behaviours and pass out of the box.
 ## Verifying the submission in under two minutes
 
 ```bash
-git clone https://github.com/<owner>/zamas2.git
-cd zamas2/fhevm-dev/assets/fhevm-hardhat-starter
+git clone git@github.com:watarus/fhevm-dev.git
+cd fhevm-dev/fhevm-dev/assets/fhevm-hardhat-starter
 
 npm install                    # ≈ 2 minutes on a warm cache
 npx hardhat compile            # both contracts compile against @fhevm/solidity ^0.11
-npx hardhat test               # 9 mock-mode tests pass (3 FHECounter + 6 ConfidentialPayroll)
+npx hardhat test               # 20 mock-mode tests pass (3 FHECounter + 17 ConfidentialPayroll)
 ```
 
 Expected output:
@@ -78,8 +78,19 @@ Expected output:
     ✔ aggregates the encrypted total payroll, decryptable by the owner only
     ✔ requestPayout clamps the requested amount via FHE.min so balance never underflows
     ✔ emits PayoutRequested with a publicly-decryptable amount handle
+    ✔ addEmployee(0x0) reverts NotEmployee
+    ✔ addEmployee twice for the same address reverts AlreadyEmployee
+    ✔ removeEmployee of a non-employee reverts NotEmployee
+    ✔ only the owner can add or remove employees
+    ✔ requestPayout from a non-employee reverts NotEmployee
+    ✔ requestPayout from a removed employee reverts even if their balance was non-zero
+    ✔ re-adding a removed employee does not create a duplicate _employees[] entry
+    ✔ settlePayout for an unknown payoutId reverts UnknownPayout
+    ✔ settlePayout from a different employee reverts PayoutSenderMismatch
+    ✔ preserves sum(balances) == totalPayroll across mixed credit/payout activity
+    ✔ requestPayout on a never-credited employee does not revert and clamps to zero
 
-  9 passing
+  20 passing
 ```
 
 ## Installing the skill into Claude Code

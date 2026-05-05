@@ -25,8 +25,11 @@ const instance = await createInstance({ ...SepoliaConfig, network: window.ethere
 const handle = await contract.getSalary(user.address);   // bytes32 handle
 
 const keypair = instance.generateKeypair();
-const startTimeStamp = Math.floor(Date.now() / 1000).toString();
-const durationDays = "10";
+// `createEIP712` and `userDecrypt` enforce `typeof startTimestamp === "number"`
+// and `typeof durationDays === "number"` at runtime — passing strings throws
+// `InvalidTypeError`. Use plain numbers.
+const startTimeStamp = Math.floor(Date.now() / 1000);
+const durationDays = 10;
 const eip712 = instance.createEIP712(
   keypair.publicKey,
   [contractAddress],
@@ -44,9 +47,9 @@ const result = await instance.userDecrypt(
   [{ handle, contractAddress }],
   keypair.privateKey,
   keypair.publicKey,
-  signature.replace("0x", ""),
+  signature,
   [contractAddress],
-  signer.address,
+  signer.address,        // MUST be the address that produced the EIP-712 signature above
   startTimeStamp,
   durationDays,
 );

@@ -4,10 +4,10 @@ A 5-prompt × 2-condition A/B benchmark of FHEVM contract generation, scored aga
 
 ## Headline numbers
 
-| Condition | Avg score (0–6) | `compiles` rate | `tests-pass` rate (verified) | ACL-clean rate |
+| Condition | Avg score (0–6) | `compiles` rate | tests pass (of those that have a test) | ACL-clean rate |
 |---|---:|---:|---:|---:|
-| **Baseline** (no skill) | **1.4 / 6** | 0 / 5 | 0 / 5 | 0 / 5 |
-| **With `fhevm-dev`** | **6.0 / 6** | 5 / 5 | 2 / 5 verified, 3 / 5 not run | 5 / 5 |
+| **Baseline** (no skill) | **1.4 / 6** | 0 / 5 | 0 / 0 (no baseline contract reaches a test) | 0 / 5 |
+| **With `fhevm-dev`** | **6.0 / 6** | 5 / 5 | 2 / 2 (3 prompts had no test written this run) | 5 / 5 |
 
 The baseline rate is dominated by criterion 1 (uses v0.11 imports) and criterion 6 (uses the v0.11 reveal pattern). Both criteria fail across the board for the baseline because pre-skill agents reach for the patterns documented in pre-2025 Zama tutorials, which target v0.7 / v0.8 — namespaces and gateway APIs that no longer exist in `@fhevm/solidity ^0.11.1`.
 

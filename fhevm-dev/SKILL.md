@@ -1,13 +1,13 @@
 ---
 name: fhevm-dev
 description: |
-  Build, test, and deploy FHEVM (Fully Homomorphic Encryption EVM) smart contracts and dApps using Zama's v0.11 toolchain (@fhevm/solidity, @fhevm/hardhat-plugin, @zama-fhe/relayer-sdk). Generates contracts that compile against the v0.11 `FHE.*` API with correct ACL discipline, encrypted inputs via `fromExternal`, EIP-712 user decryption, and self-relayed public decryption (`makePubliclyDecryptable` + `checkSignatures`). Refuses the obsolete `TFHE.*` namespace and the v0.8-era on-chain `requestDecryption` oracle pattern. Includes a working hardhat starter, a Confidential Payroll reference dApp, validation scripts, and an evaluation harness.
+  Build, test, and deploy FHEVM smart contracts using Zama's v0.11 toolchain (`@fhevm/solidity`, `@fhevm/hardhat-plugin`, `@zama-fhe/relayer-sdk`). Generates contracts using the `FHE.*` namespace, two-side ACL grants, `fromExternal` for inputs, EIP-712 user decryption, and `makePubliclyDecryptable` + `checkSignatures` for public reveal. Refuses the deprecated `TFHE.*` namespace and the v0.8 `requestDecryption` oracle pattern. Ships a hardhat starter, a Confidential Payroll reference dApp, validators, and an A/B benchmark.
 
-  TRIGGER when: a file imports `@fhevm/solidity`, `@fhevm/hardhat-plugin`, `@fhevm/mock-utils`, `@zama-fhe/relayer-sdk`, or the deprecated `fhevmjs`; the user mentions FHEVM, fhEVM, Zama, "encrypted euint", "ebool", "TFHE", "homomorphic encryption", "confidential ERC-20", "ERC-7984", "sealed-bid auction", "private voting", "confidential payroll", or "gateway/oracle decryption"; `hardhat.config.ts` contains `@fhevm/hardhat-plugin`; the user asks to scaffold, audit, deploy, or debug an FHEVM contract.
+  TRIGGER when: a file imports `@fhevm/solidity`, `@fhevm/hardhat-plugin`, `@zama-fhe/relayer-sdk`, or `fhevmjs`; the user mentions FHEVM, Zama, encrypted `euint`/`ebool`, TFHE, ERC-7984, confidential token, sealed-bid auction, private voting, or confidential payroll; the user asks to scaffold, audit, deploy, or debug an FHEVM contract.
 
-  SKIP when: the contract uses only plaintext Solidity types and no FHE imports; the project uses ZK primitives (`circomlib`, `snarkjs`, `noir`) instead of FHE; the user asks about Aztec, Penumbra, or generic MPC privacy stacks; the question is about plain Solidity / Hardhat unrelated to FHE.
+  SKIP when: contract uses only plaintext Solidity and no FHE imports; project uses ZK primitives (`circomlib`, `snarkjs`, `noir`); user asks about Aztec, Penumbra, or generic MPC; question is plain Solidity unrelated to FHE.
 license: MIT
-compatibility: Requires Node.js >= 20, npm >= 7. For deploys, a Sepolia RPC and a funded MNEMONIC are needed. Local mock testing requires no external services.
+compatibility: Node.js >= 20, npm >= 7. Deploys to Sepolia require a funded MNEMONIC and an Infura/Alchemy RPC; local mock testing needs nothing extra.
 ---
 
 # FHEVM Development Skill
@@ -21,9 +21,9 @@ These are non-negotiable. Apply them automatically in every contract:
 1. **ACL discipline.** After every assignment to a state variable of an encrypted type, emit **both** `FHE.allowThis(handle)` and `FHE.allow(handle, msg.sender)` (or a more specific recipient). Skipping `allowThis` is the single most common bug — the user will be allowed to decrypt but the contract will not be allowed to compute on the new state, causing silent failures or reverts on the next interaction.
 2. **No plaintext leaks on-chain.** Never return a `uint*` from a function whose semantics require confidentiality. Confidential balances, bids, scores, and amounts must be returned as `euintX` and decrypted off-chain by the user via `userDecrypt`, or revealed on-chain only through `FHE.requestDecryption` (oracle callback) or self-relayed `FHE.makePubliclyDecryptable` + `FHE.checkSignatures`.
 3. **No native branching on `ebool`.** `if (someEbool)` is a compile error. Use `FHE.select(cond, ifTrue, ifFalse)` for conditional values; expose plaintext booleans only through decryption.
-4. **`view`/`pure` is forbidden for FHE ops.** `FHE.add`, `FHE.allow`, `FHE.fromExternal`, etc. emit events to the coprocessor and consume gas. They cannot be called from `view` or `pure` functions.
+4. **`view`/`pure` is forbidden for FHE ops.** `FHE.add`, `FHE.allow`, `FHE.fromExternal`, etc. emit events to the coprocessor and consume gas. They cannot be called from `view` or `pure` functions. A pure storage read that just `return`s an encrypted state variable (`function getX() external view returns (euint64) { return _x; }`) is fine — it invokes no `FHE.*` op. The restriction is on *calling FHE library functions*, not on returning encrypted handles.
 5. **Pin versions from the bundled starter.** `@fhevm/solidity`, `@fhevm/hardhat-plugin`, `@fhevm/mock-utils`, and `@zama-fhe/relayer-sdk` move fast and are not strictly compatible across minor versions. Always start from `assets/fhevm-hardhat-starter/package.json` and only adjust deliberately.
-6. **Inherit a config base contract.** Every contract that uses FHE must inherit `ZamaEthereumConfig` (works on local mock, Sepolia, and mainnet alike — it resolves coprocessor addresses from `block.chainid`).
+6. **Inherit a config base contract.** Every contract that uses FHE must inherit `ZamaEthereumConfig`. It resolves coprocessor addresses by `block.chainid` and currently supports the local Hardhat mock (`31337`) and Sepolia (`11155111`). Mainnet (`1`) addresses in the bundled `ZamaConfig.sol` are placeholders pending Zama's mainnet deployment — do not deploy to mainnet without verifying the addresses are live. Other chains revert with `ZamaProtocolUnsupported`.
 
 ## Workflow / decision tree
 
@@ -146,10 +146,10 @@ function balanceOf(address u) external view returns (euint64) {
 ```
 
 ```solidity
-// ❌ WRONG — encrypted-encrypted scalar add is gas-heavy
+// ⚠️ SUBOPTIMAL — trivially encrypts the literal first, dramatically gassier
 total = FHE.add(total, FHE.asEuint64(fee));
 
-// ✅ CORRECT — scalar overload
+// ✅ PREFERRED — scalar overload
 total = FHE.add(total, fee);
 ```
 
@@ -195,7 +195,7 @@ const clear = await fhevm.userDecryptEuint(FhevmType.euint64, handle, addr, alic
 expect(clear).to.eq(1000n);
 ```
 
-Always gate tests with `if (!fhevm.isMock) this.skip();` and ship a separate `*Sepolia.ts` suite that does the inverse for live integration. For oracle-callback flows, await settlement with `await hre.fhevm.awaitDecryptionOracle();` before asserting on revealed state.
+Always gate tests with `if (!fhevm.isMock) this.skip();` and ship a separate `*Sepolia.ts` suite that does the inverse for live integration. For self-relayed public-decryption flows, drive the round trip in tests with `fhevm.publicDecrypt(...)` followed by submitting the result to your settlement method — there is no oracle-callback helper in v0.11.
 
 ## Validation checklist (apply before declaring "done")
 
@@ -218,7 +218,7 @@ Always gate tests with `if (!fhevm.isMock) this.skip();` and ship a separate `*S
 - `references/acl-model.md` — how the per-handle ACL works, the two-side rule for user decryption, `allowTransient` for cross-contract calls, propagation gotchas.
 - `references/decryption-patterns.md` — full code for user decryption, self-relayed public decryption, and oracle-callback async decryption (sealed-bid reveal pattern).
 - `references/frontend-relayer-sdk.md` — `@zama-fhe/relayer-sdk` initialization, `createEncryptedInput`, EIP-712 user decryption, public decryption.
-- `references/hardhat-and-deployment.md` — `hardhat.config.ts` template, `vars` setup, mock vs Sepolia gating, deploy/verify commands, `awaitDecryptionOracle` for tests.
+- `references/hardhat-and-deployment.md` — `hardhat.config.ts` template, `vars` setup, mock vs Sepolia gating, deploy/verify commands.
 - `references/common-patterns.md` — confidential ERC-7984 token, sealed-bid auction, private voting, confidential payroll structures with code-skeleton excerpts.
 - `references/debugging.md` — error-to-fix mapping (`ACLNotAllowed`, `HCULimitExceeded`, sender-mismatch, oracle timeouts).
 - `references/migration-from-tfhe.md` — symbol-by-symbol migration from the legacy `TFHE.*` API to the v0.11 `FHE.*` API.

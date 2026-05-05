@@ -32,7 +32,7 @@ All operators live on the `FHE` library. Width promotion: mixing `euint8` and `e
 | Conditional | `select(ebool cond, T ifTrue, T ifFalse)` | The only allowed branching primitive for encrypted booleans. |
 | Conversion | `asEbool` `asEuint*` `asEaddress` | Trivial encryption from a plaintext literal — useful for constants. |
 | External input | `fromExternal(externalE_, inputProof)` | Verifies the ZK proof and returns the corresponding internal handle. |
-| Random | `randEuint*` (with optional upper bound) | On-chain encrypted randomness. |
+| Random | `randEbool` `randEuint*` | `randEuint*` accepts an optional upper bound. On-chain encrypted randomness. |
 
 Every operator has overloads for `(encrypted, encrypted)`, `(encrypted, scalar)`, and `(scalar, encrypted)` where applicable.
 
@@ -110,8 +110,11 @@ FHE.allow(m, msg.sender);
 ### 7.2 Encrypted "is exactly equal to a constant"
 
 ```solidity
+euint8 roleHandle;          // declared elsewhere as state or local
 ebool isAdmin = FHE.eq(roleHandle, uint8(1));   // scalar overload
 ```
+
+The plaintext literal type must match the encrypted type's bit-width — `FHE.eq(euint8, uint8)` exists, `FHE.eq(euint8, uint16)` does not.
 
 ### 7.3 Encrypted clamp `min(requested, balance)`
 

@@ -112,7 +112,7 @@ npx hardhat console --network localhost
 
 ## 7. Async settlement in tests
 
-For self-relayed public-decryption flows (Pattern B in `decryption-patterns.md`), the cleartext is fetched off-chain in a real frontend. In Hardhat tests, the public-decrypt round trip is instant against the mock relayer; you do **not** need `awaitDecryptionOracle` for `makePubliclyDecryptable` — that helper exists for the legacy oracle-callback flow which v0.11 has removed.
+For self-relayed public-decryption flows (Pattern B in `decryption-patterns.md`), the cleartext is fetched off-chain in a real frontend. In Hardhat tests, the public-decrypt round trip is instant against the mock relayer (`fhevm.publicDecrypt(...)`). There is no `awaitDecryptionOracle` helper in v0.11 — the on-chain oracle-callback flow it served has been removed.
 
 When testing Pattern B, you can either:
 * Drive the full off-chain → on-chain round trip via `fhevm.publicDecrypt(...)` + `contract.settlePayout(...)`, or

@@ -15,13 +15,18 @@ import type { Signer } from "ethers";
 
 export type FhevmInstance = Awaited<ReturnType<typeof createInstance>>;
 
-let cached: FhevmInstance | null = null;
+// Cache instances per provider object so a wallet/network switch does not
+// silently reuse an instance bound to the wrong KMS endpoint. WeakMap allows
+// the previous instance to be garbage-collected when the provider is dropped.
+const instanceCache = new WeakMap<object, FhevmInstance>();
 
-export async function getFhevm(provider: unknown): Promise<FhevmInstance> {
-  if (cached) return cached;
+export async function getFhevm(provider: object): Promise<FhevmInstance> {
+  const hit = instanceCache.get(provider);
+  if (hit) return hit;
   await initSDK();
-  cached = await createInstance({ ...SepoliaConfig, network: provider as never });
-  return cached;
+  const instance = await createInstance({ ...SepoliaConfig, network: provider as never });
+  instanceCache.set(provider, instance);
+  return instance;
 }
 
 export async function encryptUint64(
@@ -34,7 +39,18 @@ export async function encryptUint64(
     .createEncryptedInput(contractAddress, userAddress)
     .add64(value)
     .encrypt();
-  return { handle: enc.handles[0] as string, proof: enc.inputProof as string };
+  const handle = enc.handles[0];
+  if (typeof handle !== "string") {
+    throw new Error(
+      `encryptUint64: relayer SDK returned no handle (got ${typeof handle}). ` +
+        `Verify the contract address and user address are correct.`,
+    );
+  }
+  const proof = enc.inputProof;
+  if (typeof proof !== "string") {
+    throw new Error(`encryptUint64: relayer SDK returned no inputProof (got ${typeof proof}).`);
+  }
+  return { handle, proof };
 }
 
 export async function userDecryptUint64(
@@ -44,8 +60,11 @@ export async function userDecryptUint64(
   contractAddress: string,
 ): Promise<bigint> {
   const keypair = instance.generateKeypair();
-  const startTimeStamp = Math.floor(Date.now() / 1000).toString();
-  const durationDays = "10";
+  // The relayer SDK's createEIP712 / userDecrypt require numeric timestamps
+  // and durations (the runtime asserts `typeof === "number"` — passing
+  // strings throws an InvalidTypeError).
+  const startTimeStamp = Math.floor(Date.now() / 1000);
+  const durationDays = 10;
   const eip712 = instance.createEIP712(
     keypair.publicKey,
     [contractAddress],
@@ -57,17 +76,28 @@ export async function userDecryptUint64(
     { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
     eip712.message,
   );
+  const userAddress = await signer.getAddress();
+  // The 6th argument MUST be the address that produced the EIP-712 signature
+  // above; the relayer cross-checks it against the recovered signer.
   const result = await instance.userDecrypt(
     [{ handle, contractAddress }],
     keypair.privateKey,
     keypair.publicKey,
-    signature.replace("0x", ""),
+    signature,
     [contractAddress],
-    await signer.getAddress(),
+    userAddress,
     startTimeStamp,
     durationDays,
   );
-  return BigInt(result[handle] as string | bigint | number);
+  const raw = result[handle];
+  if (raw == null) {
+    throw new Error(
+      `userDecryptUint64: relayer returned no value for handle ${handle}. ` +
+        `Check that FHE.allowThis(handle) and FHE.allow(handle, ${userAddress}) were issued in the contract, ` +
+        `and that the EIP-712 signer matches the userAddress argument.`,
+    );
+  }
+  return BigInt(raw as string | bigint | number);
 }
 
 export async function publicDecryptAndSettle(

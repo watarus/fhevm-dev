@@ -10,6 +10,8 @@ OpenZeppelin's `confidential-contracts` package ships a complete ERC-7984. Prefe
 npm install @openzeppelin/confidential-contracts
 ```
 
+> Verify the exact import path and constructor signature against the version of `@openzeppelin/confidential-contracts` you install — the package's API has moved between major releases (it was previously `ConfidentialFungibleToken`).
+
 ```solidity
 import {FHE, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -112,6 +114,7 @@ Key points:
 - Use `FHE.max` (not native `if`) for tracking the running highest bid, paired with `FHE.select` on the encrypted winner.
 - Reveal in two steps: `makePubliclyDecryptable` on-chain, then `checkSignatures` + decode after the off-chain `instance.publicDecrypt`.
 - `cts[]` order in `checkSignatures` must match the `abi.decode(_, (address, uint64))` order.
+- `_highestBid` and `_winner` get only `FHE.allowThis` until `startReveal` runs `makePubliclyDecryptable` — no per-user grant. This is intentional for sealed-bid privacy: bidders see their own (`_bids[msg.sender]`) but not the running leader.
 
 ## 4. Private voting
 
