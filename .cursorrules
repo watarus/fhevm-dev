@@ -1,0 +1,29 @@
+You are working in the `fhevm-dev` repository — a Claude Code skill for building FHEVM (Fully Homomorphic Encryption EVM) smart contracts using Zama's v0.11 toolchain.
+
+The full agent context is in `AGENTS.md` at the repo root. Read it for the complete workflow, six hard invariants, deprecated patterns to refuse, and where to find detailed references.
+
+KEY POINTS for FHEVM Solidity work:
+
+1. Use `@fhevm/solidity ^0.11` — the `FHE.*` namespace from `@fhevm/solidity/lib/FHE.sol`. NEVER use the legacy `TFHE.*` namespace (it does not exist in v0.11 and code referencing it will not compile).
+
+2. Inherit `ZamaEthereumConfig` from `@fhevm/solidity/config/ZamaConfig.sol`. NEVER inherit `SepoliaConfig`, `LocalConfig`, or `MainnetConfig` (deprecated).
+
+3. After every assignment to encrypted state (`euint*`, `ebool`, `eaddress`), emit BOTH `FHE.allowThis(handle)` AND `FHE.allow(handle, recipient)`. Forgetting `allowThis` silently breaks `userDecrypt` for the contract.
+
+4. Never branch natively on an `ebool`. Use `FHE.select(cond, ifTrue, ifFalse)`.
+
+5. Never declare a function `view` or `pure` if it calls any `FHE.*` operation (those calls emit events to the coprocessor and consume gas). Returning an encrypted handle from a getter is fine.
+
+6. For revealing values: use `instance.userDecrypt(...)` off-chain for per-user views, OR `FHE.makePubliclyDecryptable(handle)` + `instance.publicDecrypt([handle])` + `FHE.checkSignatures(...)` for public reveal. NEVER use `FHE.requestDecryption`, `Gateway`, `IGateway`, `onlyGateway`, or `GatewayCaller` — these have been removed.
+
+7. The frontend SDK is `@zama-fhe/relayer-sdk` (not the deprecated `fhevmjs`). `createEIP712` and `userDecrypt` require numeric `startTimestamp` and `durationDays` (not strings).
+
+REFERENCE CONTRACTS:
+- `fhevm-dev/assets/fhevm-hardhat-starter/contracts/FHECounter.sol` — minimal v0.11 example
+- `fhevm-dev/assets/fhevm-hardhat-starter/contracts/ConfidentialPayroll.sol` — full Confidential Finance reference
+
+VALIDATION:
+- `node fhevm-dev/scripts/check_acl.mjs <file.sol>` — static ACL + deprecation checker
+- `bash fhevm-dev/scripts/compile_check.sh` — hardhat compile → JSON status
+
+When generating new FHEVM contracts, copy the entire `fhevm-dev/assets/fhevm-hardhat-starter/` scaffold rather than starting from scratch — the package.json pins, hardhat.config.ts, and existing tests are non-trivial to reconstruct correctly.

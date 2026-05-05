@@ -51,10 +51,29 @@ This A/B was run by the same agent that authored the skill in a single session, 
 Caveats:
 
 * Single-author A/B. A more independent benchmark would run the prompts in fresh Claude Code sessions on a different machine, which the [`README.md`](README.md) describes how to do. The contents of [`runs/`](runs/) are the artifacts a reviewer can re-score independently.
-* Single model (Claude Opus 4.7 1M context). Adding Sonnet, Haiku, GPT-5, or Cursor would broaden the result.
+* Single model (Claude Opus 4.7 1M context). Adding Sonnet, Haiku, GPT-5, Gemini, or Cursor would broaden the result. We deliberately did **not** fabricate scores for other models we did not run; the table below is reserved for genuine independent contributions.
 * Five prompts is enough to detect large effect sizes (does the skill flip the outcome category) but not subtle ones.
 
 The data nevertheless lets a reviewer confirm a structural claim: every baseline run fails to compile against the current Zama toolchain due to namespace drift, and every skill run compiles. That is the baseline-vs-skill effect this submission is built around.
+
+## Inviting independent re-evaluation
+
+The five prompts in [`prompts/`](prompts/) are deliberately model-agnostic. The harness is designed so a third party can re-run on a different model + agent combination in under an hour, then PR their numbers into the table below. Each row is one (model, agent) combination tested by an independent reviewer; please include the artifacts under `runs/<model>-<agent>-<XX>-<name>/` so the scoring can be audited.
+
+| Model | Agent | Baseline avg | Baseline compiles | Skill avg | Skill compiles | Reviewer | Date | Notes |
+|---|---|---:|---:|---:|---:|---|---|---|
+| Claude Opus 4.7 (1M ctx) | Claude Code | 1.4 / 6 | 0 / 5 | 6.0 / 6 | 5 / 5 | self (skill author) | 2026-05-05 | see methodology caveat |
+| _your row here_ | _your row here_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ | _your handle_ | _YYYY-MM-DD_ | _notes_ |
+
+Procedure for a new row:
+1. Pick a (model, agent) combination not yet in the table.
+2. For each prompt in [`prompts/`](prompts/):
+   - Run the prompt in a fresh session with **no** skill loaded → save artifacts to `runs/<short-id>-baseline-<NN>-<name>/`.
+   - Run the same prompt in a fresh session with the skill installed (e.g. `cp -r fhevm-dev ~/.claude/skills/fhevm-dev/`) → save artifacts to `runs/<short-id>-skill-<NN>-<name>/`.
+3. Score each artifact against [`RUBRIC.md`](RUBRIC.md).
+4. PR the new row + artifacts.
+
+If a baseline genuinely succeeds on some criterion (e.g. a future model trained on v0.11 docs), that's a valid finding and should be reported as-is — the harness measures actual model behaviour, not a predetermined outcome.
 
 ## Reproducibility
 
