@@ -97,7 +97,9 @@ Claude will pick up `~/.claude/skills/fhevm-dev/SKILL.md`, follow the workflow, 
 
 ## Demo
 
-A 3-minute demo video is linked from [`docs/DEMO.md`](docs/DEMO.md).
+3-minute demo video: **<https://www.youtube.com/watch?v=LiMtW-jyOpY>**
+
+The video walks through the A/B benchmark numbers, the skill structure, a live Claude Code run that generates the `ConfidentialPayroll` contract from a natural-language prompt, the validators (`check_acl.mjs`, `compile_check.sh`), and the Hardhat test pass.
 
 ## License
 

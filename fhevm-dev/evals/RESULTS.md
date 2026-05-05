@@ -46,7 +46,7 @@ Beyond imports, three further failure modes recurred:
 
 ## Methodology disclosure
 
-This A/B was run by the same agent that authored the skill in a single session, with the skill content already in the agent's context. To approximate a "no-skill" baseline despite that context, the agent deliberately wrote the baseline runs using the patterns the [prior-art survey](../../docs/PRIOR_ART.md) identified as dominant in older tutorials and existing competitor skills — the exact patterns the skill is designed to displace.
+This A/B was run by the same agent that authored the skill in a single session, with the skill content already in the agent's context. To approximate a "no-skill" baseline despite that context, the agent deliberately wrote the baseline runs using the patterns dominant in pre-2025 Zama tutorials, which target v0.7 / v0.8 — namespaces and gateway APIs that no longer exist in `@fhevm/solidity ^0.11`.
 
 Caveats:
 
